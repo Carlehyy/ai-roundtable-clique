@@ -43,8 +43,8 @@ class BaseLLMProvider(ABC):
         pass
     
     @abstractmethod
-    async def test_connection(self) -> tuple[bool, Optional[QuotaInfo]]:
-        """Test connection and return quota info"""
+    async def test_connection(self) -> tuple[bool, Optional[QuotaInfo], float]:
+        """Test connection and return (success, quota_info, response_time_ms)"""
         pass
 
 class ClaudeProvider(BaseLLMProvider):
@@ -99,16 +99,19 @@ class ClaudeProvider(BaseLLMProvider):
                 response_time_ms=(time.time() - start_time) * 1000
             )
     
-    async def test_connection(self) -> tuple[bool, Optional[QuotaInfo]]:
+    async def test_connection(self) -> tuple[bool, Optional[QuotaInfo], float]:
+        start_time = time.time()
         try:
             response = await self.client.messages.create(
                 model=self.model_name,
                 max_tokens=10,
                 messages=[{"role": "user", "content": "Hi"}]
             )
-            return True, None  # Claude doesn't provide quota info easily
+            response_time = (time.time() - start_time) * 1000
+            return True, None, response_time  # Claude doesn't provide quota info easily
         except Exception as e:
-            return False, None
+            response_time = (time.time() - start_time) * 1000
+            return False, None, response_time
 
 class OpenAIProvider(BaseLLMProvider):
     """OpenAI GPT provider"""
@@ -152,32 +155,17 @@ class OpenAIProvider(BaseLLMProvider):
                 response_time_ms=(time.time() - start_time) * 1000
             )
     
-    async def test_connection(self) -> tuple[bool, Optional[QuotaInfo]]:
+    async def test_connection(self) -> tuple[bool, Optional[QuotaInfo], float]:
+        start_time = time.time()
         try:
-            # Try to get quota info from usage endpoint
-            headers = {"Authorization": f"Bearer {self.api_key}"}
-            async with httpx.AsyncClient() as client:
-                response = await client.get(
-                    "https://api.openai.com/dashboard/billing/credit_grants",
-                    headers=headers,
-                    timeout=10
-                )
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    quota = QuotaInfo(
-                        total=data.get("total_granted", 0),
-                        used=data.get("total_used", 0),
-                        remaining=data.get("total_available", 0)
-                    )
-                    return True, quota
-                else:
-                    # Fallback: just test with a simple request
-                    await self.generate_response([{"role": "user", "content": "Hi"}], max_tokens=10)
-                    return True, None
+            # Just test with a simple request
+            await self.generate_response([{"role": "user", "content": "Hi"}], max_tokens=10)
+            response_time = (time.time() - start_time) * 1000
+            return True, None, response_time
                     
         except Exception as e:
-            return False, None
+            response_time = (time.time() - start_time) * 1000
+            return False, None, response_time
 
 class GeminiProvider(BaseLLMProvider):
     """Google Gemini provider"""
@@ -222,12 +210,15 @@ class GeminiProvider(BaseLLMProvider):
                 response_time_ms=(time.time() - start_time) * 1000
             )
     
-    async def test_connection(self) -> tuple[bool, Optional[QuotaInfo]]:
+    async def test_connection(self) -> tuple[bool, Optional[QuotaInfo], float]:
+        start_time = time.time()
         try:
             response = await self.model.generate_content_async("Hi", generation_config=genai.types.GenerationConfig(max_output_tokens=10))
-            return True, None
+            response_time = (time.time() - start_time) * 1000
+            return True, None, response_time
         except Exception as e:
-            return False, None
+            response_time = (time.time() - start_time) * 1000
+            return False, None, response_time
 
 class DeepSeekProvider(OpenAIProvider):
     """DeepSeek provider (OpenAI compatible)"""

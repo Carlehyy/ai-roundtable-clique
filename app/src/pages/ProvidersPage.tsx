@@ -47,7 +47,25 @@ export function ProvidersPage() {
   const handleTest = async (id: number) => {
     setTestingId(id);
     try {
-      await testConnection(id);
+      const result = await testConnection(id);
+      if (result.success) {
+        // Show success message with response time
+        const responseTime = result.response_time_ms?.toFixed(0) || 'N/A';
+        const message = `连接成功!\n响应时间: ${responseTime}ms\n状态: 在线`;
+        // Use confirm dialog to show the message
+        setTimeout(() => {
+          window.confirm(`✅ ${message}`);
+        }, 100);
+      } else {
+        setTimeout(() => {
+          window.confirm(`❌ 连接失败\n\n${result.message || '未知错误'}`);
+        }, 100);
+      }
+      await refresh(); // Refresh to update status
+    } catch (error: any) {
+      setTimeout(() => {
+        window.confirm(`❌ 测试失败\n\n${error.message || '未知错误'}`);
+      }, 100);
     } finally {
       setTestingId(null);
     }

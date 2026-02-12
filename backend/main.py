@@ -84,7 +84,34 @@ async def get_providers(db: AsyncSession = Depends(get_db)):
     """Get all LLM providers"""
     result = await db.execute(select(LLMProvider).order_by(LLMProvider.display_name))
     providers = result.scalars().all()
-    return providers
+    
+    # Add masked API key to response
+    response_data = []
+    for provider in providers:
+        provider_dict = {
+            "id": provider.id,
+            "name": provider.name,
+            "display_name": provider.display_name,
+            "provider_type": provider.provider_type,
+            "model_name": provider.model_name,
+            "brand_color": provider.brand_color,
+            "icon_url": provider.icon_url,
+            "status": provider.status,
+            "is_enabled": provider.is_enabled,
+            "api_key_masked": provider.api_key[:8] + "*" * 20 if provider.api_key else None,
+            "api_base": provider.api_base,
+            "total_quota": provider.total_quota,
+            "used_quota": provider.used_quota,
+            "remaining_quota": provider.remaining_quota,
+            "avg_response_time": provider.avg_response_time,
+            "success_rate": provider.success_rate,
+            "last_check_at": provider.last_check_at,
+            "created_at": provider.created_at,
+            "updated_at": provider.updated_at
+        }
+        response_data.append(provider_dict)
+    
+    return response_data
 
 @app.get("/api/providers/{provider_id}", response_model=LLMProviderResponse)
 async def get_provider(provider_id: int, db: AsyncSession = Depends(get_db)):
@@ -95,7 +122,28 @@ async def get_provider(provider_id: int, db: AsyncSession = Depends(get_db)):
     if not provider:
         raise HTTPException(status_code=404, detail="Provider not found")
     
-    return provider
+    # Return with masked API key
+    return {
+        "id": provider.id,
+        "name": provider.name,
+        "display_name": provider.display_name,
+        "provider_type": provider.provider_type,
+        "model_name": provider.model_name,
+        "brand_color": provider.brand_color,
+        "icon_url": provider.icon_url,
+        "status": provider.status,
+        "is_enabled": provider.is_enabled,
+        "api_key_masked": provider.api_key[:8] + "*" * 20 if provider.api_key else None,
+        "api_base": provider.api_base,
+        "total_quota": provider.total_quota,
+        "used_quota": provider.used_quota,
+        "remaining_quota": provider.remaining_quota,
+        "avg_response_time": provider.avg_response_time,
+        "success_rate": provider.success_rate,
+        "last_check_at": provider.last_check_at,
+        "created_at": provider.created_at,
+        "updated_at": provider.updated_at
+    }
 
 @app.post("/api/providers", response_model=LLMProviderResponse)
 async def create_provider_config(
@@ -195,11 +243,12 @@ async def test_provider_connection(provider_id: int, db: AsyncSession = Depends(
             provider.api_base
         )
         
-        success, quota_info = await llm_provider.test_connection()
+        success, quota_info, response_time_ms = await llm_provider.test_connection()
         
         if success:
             provider.status = LLMProviderStatus.ONLINE
             provider.last_check_at = datetime.utcnow()
+            provider.avg_response_time = response_time_ms
             
             if quota_info:
                 provider.total_quota = quota_info.total
@@ -211,6 +260,7 @@ async def test_provider_connection(provider_id: int, db: AsyncSession = Depends(
             return TestConnectionResponse(
                 success=True,
                 message="Connection successful",
+                response_time_ms=response_time_ms,
                 quota_info={
                     "total": quota_info.total if quota_info else None,
                     "used": quota_info.used if quota_info else None,
@@ -223,7 +273,8 @@ async def test_provider_connection(provider_id: int, db: AsyncSession = Depends(
             
             return TestConnectionResponse(
                 success=False,
-                message="Connection failed"
+                message="Connection failed",
+                response_time_ms=response_time_ms
             )
             
     except Exception as e:

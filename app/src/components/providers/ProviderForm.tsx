@@ -43,7 +43,7 @@ export function ProviderForm({ provider, open, onOpenChange, onSubmit }: Provide
         display_name: provider.display_name,
         provider_type: provider.provider_type,
         model_name: provider.model_name,
-        api_key: provider.api_key || '',
+        api_key: provider.api_key_masked || '',
         api_base: provider.api_base || '',
         brand_color: provider.brand_color,
       });

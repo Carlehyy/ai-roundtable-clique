@@ -45,6 +45,8 @@ class LLMProviderResponse(LLMProviderBase):
     id: int
     status: LLMProviderStatus
     is_enabled: bool
+    api_key_masked: Optional[str] = None
+    api_base: Optional[str] = None
     total_quota: Optional[float]
     used_quota: float
     remaining_quota: Optional[float]
