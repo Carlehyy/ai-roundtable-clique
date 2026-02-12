@@ -24,9 +24,13 @@ class BrainstormEngine:
     
     async def initialize_session(self, session_id: int) -> dict:
         """Initialize a brainstorming session"""
+        from sqlalchemy.orm import selectinload
+        
         # Load session with LLMs
         result = await self.db.execute(
-            select(Session).where(Session.id == session_id)
+            select(Session)
+            .where(Session.id == session_id)
+            .options(selectinload(Session.llms))
         )
         session = result.scalar_one_or_none()
         

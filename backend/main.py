@@ -9,6 +9,8 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
@@ -34,7 +36,7 @@ async def lifespan(app: FastAPI):
     await init_db()
     
     # Initialize default providers if none exist
-    async with get_db() as db:
+    async for db in get_db():
         result = await db.execute(select(func.count(LLMProvider.id)))
         count = result.scalar()
         
@@ -242,8 +244,11 @@ async def get_sessions(
     db: AsyncSession = Depends(get_db)
 ):
     """Get all brainstorming sessions"""
+    from sqlalchemy.orm import selectinload
+    
     result = await db.execute(
         select(Session)
+        .options(selectinload(Session.llms))
         .order_by(Session.created_at.desc())
         .offset(skip)
         .limit(limit)
@@ -254,7 +259,13 @@ async def get_sessions(
 @app.get("/api/sessions/{session_id}", response_model=SessionDetailResponse)
 async def get_session(session_id: int, db: AsyncSession = Depends(get_db)):
     """Get a specific session with messages"""
-    result = await db.execute(select(Session).where(Session.id == session_id))
+    from sqlalchemy.orm import selectinload
+    
+    result = await db.execute(
+        select(Session)
+        .where(Session.id == session_id)
+        .options(selectinload(Session.llms), selectinload(Session.messages))
+    )
     session = result.scalar_one_or_none()
     
     if not session:
@@ -303,10 +314,10 @@ async def create_session(
         )
         db.add(session_llm)
     
-    # Load LLMs into session
-    session.llms = list(llms)
     await db.commit()
-    await db.refresh(session)
+    
+    # Refresh to load relationships
+    await db.refresh(session, ["llms"])
     
     return session
 
@@ -384,12 +395,21 @@ async def start_brainstorm(
     if session.is_completed:
         raise HTTPException(status_code=400, detail="Session already completed")
     
-    # Start the brainstorm in background
-    engine = BrainstormEngine(db)
+    # Start the brainstorm in background with a new DB session
+    async def run_brainstorm():
+        from models import async_session_maker
+        async with async_session_maker() as new_db:
+            try:
+                engine = BrainstormEngine(new_db)
+                await engine.start_brainstorm(session_id)
+            except Exception as e:
+                print(f"Brainstorm error: {e}")
+                import traceback
+                traceback.print_exc()
     
     # Run in background task
     import asyncio
-    asyncio.create_task(engine.start_brainstorm(session_id))
+    asyncio.create_task(run_brainstorm())
     
     return {"message": "Brainstorm session started", "session_id": session_id}
 
@@ -484,6 +504,16 @@ async def get_system_stats(db: AsyncSession = Depends(get_db)):
 async def health_check():
     """Health check endpoint"""
     return {"status": "healthy", "timestamp": datetime.utcnow().isoformat()}
+
+# ============== Static Files ==============
+
+# Serve static files from the frontend dist directory
+app.mount("/assets", StaticFiles(directory="../app/dist/assets"), name="assets")
+
+@app.get("/")
+async def serve_frontend():
+    """Serve the frontend application"""
+    return FileResponse("../app/dist/index.html")
 
 # ============== Main ==============
 

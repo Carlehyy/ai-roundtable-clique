@@ -1,0 +1,144 @@
+diff --git a/backend/brainstorm_engine.py b/backend/brainstorm_engine.py
+index d5a589c..a1406a5 100644
+--- a/backend/brainstorm_engine.py
++++ b/backend/brainstorm_engine.py
+@@ -24,9 +24,13 @@ class BrainstormEngine:
+     
+     async def initialize_session(self, session_id: int) -> dict:
+         """Initialize a brainstorming session"""
++        from sqlalchemy.orm import selectinload
++        
+         # Load session with LLMs
+         result = await self.db.execute(
+-            select(Session).where(Session.id == session_id)
++            select(Session)
++            .where(Session.id == session_id)
++            .options(selectinload(Session.llms))
+         )
+         session = result.scalar_one_or_none()
+         
+diff --git a/backend/llm_providers.py b/backend/llm_providers.py
+index 8db3e09..a21768a 100644
+--- a/backend/llm_providers.py
++++ b/backend/llm_providers.py
+@@ -115,10 +115,11 @@ class OpenAIProvider(BaseLLMProvider):
+     
+     def __init__(self, api_key: str, model_name: str = "gpt-4", api_base: Optional[str] = None):
+         super().__init__(api_key, model_name, api_base)
+-        self.client = openai.AsyncOpenAI(
+-            api_key=api_key,
+-            base_url=api_base or "https://api.openai.com/v1"
+-        )
++        # If api_base is None, let OpenAI client use its default (which may be proxied)
++        if api_base:
++            self.client = openai.AsyncOpenAI(api_key=api_key, base_url=api_base)
++        else:
++            self.client = openai.AsyncOpenAI(api_key=api_key)
+     
+     async def generate_response(
+         self, 
+diff --git a/backend/main.py b/backend/main.py
+index 3d2e950..dfa30ae 100644
+--- a/backend/main.py
++++ b/backend/main.py
+@@ -9,6 +9,8 @@ from contextlib import asynccontextmanager
+ 
+ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException, Query
+ from fastapi.middleware.cors import CORSMiddleware
++from fastapi.staticfiles import StaticFiles
++from fastapi.responses import FileResponse
+ from sqlalchemy.ext.asyncio import AsyncSession
+ from sqlalchemy import select, func
+ 
+@@ -34,7 +36,7 @@ async def lifespan(app: FastAPI):
+     await init_db()
+     
+     # Initialize default providers if none exist
+-    async with get_db() as db:
++    async for db in get_db():
+         result = await db.execute(select(func.count(LLMProvider.id)))
+         count = result.scalar()
+         
+@@ -242,8 +244,11 @@ async def get_sessions(
+     db: AsyncSession = Depends(get_db)
+ ):
+     """Get all brainstorming sessions"""
++    from sqlalchemy.orm import selectinload
++    
+     result = await db.execute(
+         select(Session)
++        .options(selectinload(Session.llms))
+         .order_by(Session.created_at.desc())
+         .offset(skip)
+         .limit(limit)
+@@ -254,7 +259,13 @@ async def get_sessions(
+ @app.get("/api/sessions/{session_id}", response_model=SessionDetailResponse)
+ async def get_session(session_id: int, db: AsyncSession = Depends(get_db)):
+     """Get a specific session with messages"""
+-    result = await db.execute(select(Session).where(Session.id == session_id))
++    from sqlalchemy.orm import selectinload
++    
++    result = await db.execute(
++        select(Session)
++        .where(Session.id == session_id)
++        .options(selectinload(Session.llms), selectinload(Session.messages))
++    )
+     session = result.scalar_one_or_none()
+     
+     if not session:
+@@ -303,10 +314,10 @@ async def create_session(
+         )
+         db.add(session_llm)
+     
+-    # Load LLMs into session
+-    session.llms = list(llms)
+     await db.commit()
+-    await db.refresh(session)
++    
++    # Refresh to load relationships
++    await db.refresh(session, ["llms"])
+     
+     return session
+ 
+@@ -384,12 +395,21 @@ async def start_brainstorm(
+     if session.is_completed:
+         raise HTTPException(status_code=400, detail="Session already completed")
+     
+-    # Start the brainstorm in background
+-    engine = BrainstormEngine(db)
++    # Start the brainstorm in background with a new DB session
++    async def run_brainstorm():
++        from models import async_session_maker
++        async with async_session_maker() as new_db:
++            try:
++                engine = BrainstormEngine(new_db)
++                await engine.start_brainstorm(session_id)
++            except Exception as e:
++                print(f"Brainstorm error: {e}")
++                import traceback
++                traceback.print_exc()
+     
+     # Run in background task
+     import asyncio
+-    asyncio.create_task(engine.start_brainstorm(session_id))
++    asyncio.create_task(run_brainstorm())
+     
+     return {"message": "Brainstorm session started", "session_id": session_id}
+ 
+@@ -485,6 +505,16 @@ async def health_check():
+     """Health check endpoint"""
+     return {"status": "healthy", "timestamp": datetime.utcnow().isoformat()}
+ 
++# ============== Static Files ==============
++
++# Serve static files from the frontend dist directory
++app.mount("/assets", StaticFiles(directory="../app/dist/assets"), name="assets")
++
++@app.get("/")
++async def serve_frontend():
++    """Serve the frontend application"""
++    return FileResponse("../app/dist/index.html")
++
+ # ============== Main ==============
+ 
+ if __name__ == "__main__":

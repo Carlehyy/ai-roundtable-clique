@@ -115,10 +115,11 @@ class OpenAIProvider(BaseLLMProvider):
     
     def __init__(self, api_key: str, model_name: str = "gpt-4", api_base: Optional[str] = None):
         super().__init__(api_key, model_name, api_base)
-        self.client = openai.AsyncOpenAI(
-            api_key=api_key,
-            base_url=api_base or "https://api.openai.com/v1"
-        )
+        # If api_base is None, let OpenAI client use its default (which may be proxied)
+        if api_base:
+            self.client = openai.AsyncOpenAI(api_key=api_key, base_url=api_base)
+        else:
+            self.client = openai.AsyncOpenAI(api_key=api_key)
     
     async def generate_response(
         self, 
