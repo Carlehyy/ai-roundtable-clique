@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Plus, RefreshCw, AlertCircle } from 'lucide-react';
 import { useProviders } from '@/hooks/useProviders';
@@ -21,6 +21,7 @@ export function ProvidersPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [editingProvider, setEditingProvider] = useState<LLMProvider | null>(null);
   const [testingId, setTestingId] = useState<number | null>(null);
+  const [filter, setFilter] = useState<'all' | 'online' | 'offline'>('online');
 
   const handleEdit = (provider: LLMProvider) => {
     setEditingProvider(provider);
@@ -49,10 +50,8 @@ export function ProvidersPage() {
     try {
       const result = await testConnection(id);
       if (result.success) {
-        // Show success message with response time
         const responseTime = result.response_time_ms?.toFixed(0) || 'N/A';
         const message = `连接成功!\n响应时间: ${responseTime}ms\n状态: 在线`;
-        // Use confirm dialog to show the message
         setTimeout(() => {
           window.confirm(`✅ ${message}`);
         }, 100);
@@ -61,7 +60,7 @@ export function ProvidersPage() {
           window.confirm(`❌ 连接失败\n\n${result.message || '未知错误'}`);
         }, 100);
       }
-      await refresh(); // Refresh to update status
+      await refresh();
     } catch (error: any) {
       setTimeout(() => {
         window.confirm(`❌ 测试失败\n\n${error.message || '未知错误'}`);
@@ -77,10 +76,19 @@ export function ProvidersPage() {
   };
 
   const onlineCount = providers.filter(p => p.status === 'online').length;
+  const offlineCount = providers.filter(p => p.status === 'offline').length;
+
+  const filteredProviders = useMemo(() => {
+    if (filter === 'online') {
+      return providers.filter(p => p.status === 'online');
+    } else if (filter === 'offline') {
+      return providers.filter(p => p.status === 'offline');
+    }
+    return providers;
+  }, [providers, filter]);
 
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">LLM 提供商管理</h1>
@@ -110,7 +118,48 @@ export function ProvidersPage() {
         </div>
       </div>
 
-      {/* Error Alert */}
+      <div className="flex gap-2 border-b border-border">
+        <button
+          onClick={() => setFilter('online')}
+          className={`px-4 py-2 font-medium transition-colors relative ${
+            filter === 'online'
+              ? 'text-cyan-400'
+              : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          在线 ({onlineCount})
+          {filter === 'online' && (
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-cyan-400" />
+          )}
+        </button>
+        <button
+          onClick={() => setFilter('offline')}
+          className={`px-4 py-2 font-medium transition-colors relative ${
+            filter === 'offline'
+              ? 'text-cyan-400'
+              : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          离线 ({offlineCount})
+          {filter === 'offline' && (
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-cyan-400" />
+          )}
+        </button>
+        <button
+          onClick={() => setFilter('all')}
+          className={`px-4 py-2 font-medium transition-colors relative ${
+            filter === 'all'
+              ? 'text-cyan-400'
+              : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          全部 ({providers.length})
+          {filter === 'all' && (
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-cyan-400" />
+          )}
+        </button>
+      </div>
+
       {error && (
         <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 flex items-center gap-3">
           <AlertCircle className="w-5 h-5" />
@@ -118,7 +167,6 @@ export function ProvidersPage() {
         </div>
       )}
 
-      {/* Providers Grid */}
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {Array.from({ length: 6 }).map((_, i) => (
@@ -129,7 +177,7 @@ export function ProvidersPage() {
             </div>
           ))}
         </div>
-      ) : providers.length === 0 ? (
+      ) : filteredProviders.length === 0 ? (
         <div className="text-center py-16">
           <div className="w-20 h-20 rounded-full bg-secondary/50 flex items-center justify-center mx-auto mb-4">
             <Plus className="w-10 h-10 text-muted-foreground" />
@@ -148,7 +196,7 @@ export function ProvidersPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {providers.map((provider, index) => (
+          {filteredProviders.map((provider, index) => (
             <div 
               key={provider.id}
               className="animate-slide-up"
@@ -166,7 +214,6 @@ export function ProvidersPage() {
         </div>
       )}
 
-      {/* Provider Form Modal */}
       <ProviderForm
         provider={editingProvider}
         open={formOpen}
