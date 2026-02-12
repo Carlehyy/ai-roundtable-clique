@@ -12,9 +12,9 @@ export class WebSocketService {
     return new Promise((resolve, reject) => {
       this.sessionId = sessionId;
       // Use dynamic WebSocket URL based on current location
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      // Force ws:// protocol as the proxy handles SSL termination
       const host = window.location.host;
-      const wsUrl = `${protocol}//${host}/ws/sessions/${sessionId}`;
+      const wsUrl = `ws://${host}/ws/sessions/${sessionId}`;
       
       try {
         this.ws = new WebSocket(wsUrl);
