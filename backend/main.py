@@ -496,8 +496,20 @@ async def websocket_endpoint(websocket: WebSocket, session_id: int):
                     async with async_session_maker() as db:
                         try:
                             engine = BrainstormEngine(db)
-                            await engine.add_user_message(session_id, content)
+                            message = await engine.add_user_message(session_id, content)
                             await db.commit()
+                            
+                            # Broadcast new message to all connected clients
+                            await manager.broadcast_to_session(session_id, {
+                                "type": WSMessageType.NEW_MESSAGE,
+                                "data": {
+                                    "id": message.id,
+                                    "role": message.role,
+                                    "content": message.content,
+                                    "llm_id": message.llm_id,
+                                    "created_at": message.created_at.isoformat()
+                                }
+                            })
                         except Exception as e:
                             await db.rollback()
                             print(f"Error adding user message: {e}")
