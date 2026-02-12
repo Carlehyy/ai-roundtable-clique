@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
 from models import (
-    init_db, get_db, LLMProvider, Session, Message, 
+    init_db, get_db, async_session_maker, LLMProvider, Session, Message, 
     ConsensusPoint, SessionLLM, LLMProviderStatus
 )
 from schemas import (
@@ -493,8 +493,15 @@ async def websocket_endpoint(websocket: WebSocket, session_id: int):
                 # Handle user message
                 content = message_data.get("content", "")
                 if content:
-                    engine = BrainstormEngine(None)  # Will need to fix this
-                    await engine.add_user_message(session_id, content)
+                    async with async_session_maker() as db:
+                        try:
+                            engine = BrainstormEngine(db)
+                            await engine.add_user_message(session_id, content)
+                            await db.commit()
+                        except Exception as e:
+                            await db.rollback()
+                            print(f"Error adding user message: {e}")
+                            raise
             
             elif message_type == WSMessageType.START_BRAINSTORM:
                 # Start brainstorm
