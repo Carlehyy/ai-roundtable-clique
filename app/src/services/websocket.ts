@@ -11,7 +11,10 @@ export class WebSocketService {
   connect(sessionId: number): Promise<void> {
     return new Promise((resolve, reject) => {
       this.sessionId = sessionId;
-      const wsUrl = `ws://localhost:8000/ws/sessions/${sessionId}`;
+      // Use dynamic WebSocket URL based on current location
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const host = window.location.host;
+      const wsUrl = `${protocol}//${host}/ws/sessions/${sessionId}`;
       
       try {
         this.ws = new WebSocket(wsUrl);
