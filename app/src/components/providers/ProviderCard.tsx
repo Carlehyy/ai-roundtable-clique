@@ -134,6 +134,22 @@ export function ProviderCard({
           </div>
         </div>
 
+        {/* Last Online Time */}
+        <div className="bg-secondary/50 rounded-lg p-2.5">
+          <p className="text-xs text-muted-foreground mb-1">最近在线时间</p>
+          <p className="text-sm font-medium">
+            {provider.last_used_at 
+              ? new Date(provider.last_used_at).toLocaleString('zh-CN', {
+                  year: 'numeric',
+                  month: '2-digit',
+                  day: '2-digit',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                }).replace(/\//g, '-')
+              : '-'}
+          </p>
+        </div>
+
         {/* Actions */}
         <div className="flex gap-2 pt-2">
           <Button

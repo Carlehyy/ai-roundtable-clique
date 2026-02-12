@@ -47,6 +47,7 @@ export function ProviderForm({ provider, open, onOpenChange, onSubmit }: Provide
         api_base: provider.api_base || '',
         brand_color: provider.brand_color,
       });
+      setShowApiKey(false); // Reset to hidden when opening form
     } else {
       setFormData({
         name: '',
@@ -57,8 +58,26 @@ export function ProviderForm({ provider, open, onOpenChange, onSubmit }: Provide
         api_base: '',
         brand_color: '#d97757',
       });
+      setShowApiKey(false);
     }
   }, [provider, open]);
+
+  // Fetch full API key when show button is clicked
+  const handleToggleApiKey = async () => {
+    if (!showApiKey && provider && formData.api_key?.includes('*')) {
+      // Fetch full API key from backend
+      try {
+        const response = await fetch(`/api/providers/${provider.id}/apikey`);
+        if (response.ok) {
+          const data = await response.json();
+          setFormData(prev => ({ ...prev, api_key: data.api_key }));
+        }
+      } catch (error) {
+        console.error('Failed to fetch API key:', error);
+      }
+    }
+    setShowApiKey(!showApiKey);
+  };
 
   const handleProviderTypeChange = (type: string) => {
     const providerType = PROVIDER_TYPES.find(p => p.value === type);
@@ -178,7 +197,7 @@ export function ProviderForm({ provider, open, onOpenChange, onSubmit }: Provide
               />
               <button
                 type="button"
-                onClick={() => setShowApiKey(!showApiKey)}
+                onClick={handleToggleApiKey}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
               >
                 {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}

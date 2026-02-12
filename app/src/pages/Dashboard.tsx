@@ -177,9 +177,10 @@ export function Dashboard({ onNavigate }: DashboardProps) {
               配置和管理多个 LLM 提供商的 API 密钥和状态监控。
             </p>
             <Button 
-              variant="outline"
-              className="w-full"
+              variant="outline" 
+              size="lg"
               onClick={() => onNavigate('providers')}
+              className="btn-glow border-cyan-500/50 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 hover:text-cyan-300"
             >
               管理提供商
             </Button>

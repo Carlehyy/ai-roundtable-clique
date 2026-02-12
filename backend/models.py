@@ -50,6 +50,7 @@ class LLMProvider(Base):
     avg_response_time = Column(Float, nullable=True)  # Average response time in ms
     success_rate = Column(Float, default=100.0)  # Success rate percentage
     last_check_at = Column(DateTime, nullable=True)
+    last_used_at = Column(DateTime, nullable=True)  # Last time used in a session
     
     # Brand colors for UI
     brand_color = Column(String(7), default="#3b82f6")

@@ -27,6 +27,7 @@ from schemas import (
 from llm_providers import create_provider, DEFAULT_PROVIDERS
 from websocket_manager import ConnectionManager, manager, send_error
 from brainstorm_engine import BrainstormEngine
+from health_checker import health_checker
 
 # Lifespan context manager
 @asynccontextmanager
@@ -55,10 +56,16 @@ async def lifespan(app: FastAPI):
             await db.commit()
             print("Initialized default LLM providers")
     
+    # Start health checker background task
+    health_checker.start()
+    print("LLM Health Checker started")
+    
     yield
     
     # Shutdown
     print("Shutting down...")
+    await health_checker.stop()
+    print("LLM Health Checker stopped")
 
 # Create FastAPI app
 app = FastAPI(
@@ -106,6 +113,7 @@ async def get_providers(db: AsyncSession = Depends(get_db)):
             "avg_response_time": provider.avg_response_time,
             "success_rate": provider.success_rate,
             "last_check_at": provider.last_check_at,
+            "last_used_at": provider.last_used_at,
             "created_at": provider.created_at,
             "updated_at": provider.updated_at
         }
@@ -141,6 +149,7 @@ async def get_provider(provider_id: int, db: AsyncSession = Depends(get_db)):
         "avg_response_time": provider.avg_response_time,
         "success_rate": provider.success_rate,
         "last_check_at": provider.last_check_at,
+        "last_used_at": provider.last_used_at,
         "created_at": provider.created_at,
         "updated_at": provider.updated_at
     }
@@ -214,6 +223,17 @@ async def delete_provider(provider_id: int, db: AsyncSession = Depends(get_db)):
     await db.commit()
     
     return {"message": "Provider deleted successfully"}
+
+@app.get("/api/providers/{provider_id}/apikey")
+async def get_provider_apikey(provider_id: int, db: AsyncSession = Depends(get_db)):
+    """Get the full API key for a provider (for editing)"""
+    result = await db.execute(select(LLMProvider).where(LLMProvider.id == provider_id))
+    provider = result.scalar_one_or_none()
+    
+    if not provider:
+        raise HTTPException(status_code=404, detail="Provider not found")
+    
+    return {"api_key": provider.api_key or ""}
 
 @app.post("/api/providers/{provider_id}/test", response_model=TestConnectionResponse)
 async def test_provider_connection(provider_id: int, db: AsyncSession = Depends(get_db)):
@@ -480,7 +500,14 @@ async def stop_brainstorm(
 @app.websocket("/ws/sessions/{session_id}")
 async def websocket_endpoint(websocket: WebSocket, session_id: int):
     """WebSocket endpoint for real-time session updates"""
-    await manager.connect(websocket, session_id)
+    print(f"WebSocket connection attempt for session {session_id}")
+    print(f"WebSocket headers: {websocket.headers}")
+    try:
+        await manager.connect(websocket, session_id)
+        print(f"WebSocket connected successfully for session {session_id}")
+    except Exception as e:
+        print(f"WebSocket connection failed: {e}")
+        raise
     
     try:
         while True:
@@ -589,4 +616,12 @@ async def serve_frontend():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(
+        app, 
+        host="0.0.0.0", 
+        port=8000,
+        ws_ping_interval=20,  # WebSocket ping interval in seconds
+        ws_ping_timeout=20,   # WebSocket ping timeout in seconds
+        timeout_keep_alive=300,  # Keep-alive timeout
+        log_level="info"
+    )

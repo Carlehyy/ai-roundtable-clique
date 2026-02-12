@@ -53,6 +53,7 @@ class LLMProviderResponse(LLMProviderBase):
     avg_response_time: Optional[float]
     success_rate: float
     last_check_at: Optional[datetime]
+    last_used_at: Optional[datetime]
     created_at: datetime
     updated_at: datetime
     

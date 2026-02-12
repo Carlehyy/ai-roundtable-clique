@@ -18,6 +18,7 @@ export interface LLMProvider {
   avg_response_time?: number;
   success_rate: number;
   last_check_at?: string;
+  last_used_at?: string;
   brand_color: string;
   icon_url?: string;
   config?: Record<string, any>;
